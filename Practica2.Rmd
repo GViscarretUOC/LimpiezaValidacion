@@ -1,5 +1,7 @@
 ---
-title: "Practica2ss"
+title: "Practica2"
+author: "Gabriel Viscarret Atienza"
+date: "29 de diciembre de 2018"
 output: html_document
 ---
 
