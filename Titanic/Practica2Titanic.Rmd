@@ -1,0 +1,465 @@
+---
+title: 'Práctica 2: Limpieza y Validación de datos'
+subtitle: 'Titanic: Machine Learning from Disaster (https://www.kaggle.com/c/titanic)'
+author: "Gabriel Viscarret Atienza"
+date: "7 de enero de 2019"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 4
+---
+
+******
+#**Descripción  del  dataset.  ¿Por  qué  es  importante  y  qué  pregunta/problema  pretende responder?**
+******
+
+##**Descripción de los datos**
+
+Los datos que vamos a manejar han sido suministrados desde el reto Titanic: Machine Learning from Disaster, publicado en la página https://www.kaggle.com/c/titanic/kernels?sortBy=relevance&group=everyone&search=easy&page=1&pageSize=20&competitionId=3136 
+En este reto se suministra una colección de datos respecto a los viajeros del Titanic, separados en dos ficheros. Uno de entrenamiento que incluye la variable dependiente, Survived, que indica si el viajero sobrevivió al famoso accidente del Titanic. El otro, de test, incluye los mismos campos que el primero, salvo esta variable de supervivencia. Y es que el reto consiste en predecir si los viajeros del fichero test sobrevieron a la catástrofe. Indicar que se adjunta un tercer fichero con el resultado real de estos viajeros, para poder comparar la predicción con datos reales.
+El archivo de test y de entrenamiento contienen estos campos comunes:
+
+* **PassengerID:** Es un identificador único del viajero dentro del conjunto de datos.
+* **Pclass:** Indica la clase de tarifa contratada. Tiene los valores 1, 2 y 3, siendo el 1 la clase mas alta y 3 la mas sencilla.
+* **Name:** Nombre del pasajero. Indicar que incluye en todos los registros el tratamiento referido al viajero (señor, señora, capitán, etc)
+* **Sex:** Indica el género del viajero, pudiendo tomar los valores masculino (male) o femenino (female)
+* **Age:** Edad del viajero en años. Será fraccional si es menor de un año. Además será también fraccional (con fracción .5) para los viajeros de los que se desconoce su edad, y se ha hecho una estimación.
+* **SibSP:** Define la relación familiar, sumando el número de hermanos y hermanas o de cónyuges.
+* **Parch:** Define la relación familiar, sumando tanto el número de ascendentes como el de descendentes.
+* **Ticket:** Indica el número o código del billete.
+* **Fare:** Indica el valor del billete que ha adquirido el viajero.
+* **Cabin:** Indica el número de camarote.
+* **Embarked:** Indica con un código la ciudad donde embarcó el viajero, siendo el código 'C' para Cherbourg, 'Q' para Queenstown y  'S' para la ciudad de  Southampton.
+
+##**Importancia y objetivo del análisis**
+
+El accidente del Titanic es de sobra conocido, con multitud de escritos, libros e incluso películas. También con multitud de leyendas sobre ese viaje. La principal es que al no haber medidas de rescate para todos los viajeros, se dio prioridad al acceso a los botes salvavidas a los pasajeros de primera clase. Vamos a intentar pues descubrir los factores mas influyentes que hicieron sobrevivir a los pasajeros, y si principalmente salvaron la vida los viajeros de primera clase.
+Además, se ha elegido este reto por verlo interesante (por su variedad, relación y deficiencias de los datos) para esta práctica que se basa en la limpieza e integración de los datos.
+Como objetivo final, trataremos ver como con estos datos, tras clasificarlos y limpiarlos, nos serán válidos para predecir la supervivencia de los pasajeros y personal del Titanic.
+
+******
+#**Integración y selección de los datos de interés a analizar**
+******
+
+Comencemos incorporando los datos desde los ficheros
+
+```{r}
+#Cargamos los ficheros
+titanic.train=read.csv("dataset\\train.csv")
+titanic.test=read.csv("dataset\\test.csv")
+```
+
+Para a continuación tratar y limpiar los datos, vamos a fusionar los dos datasets para hacerlo en conjunto.
+
+```{r}
+#Para poder fusionarlos, tienen que tener las mismas columnas
+titanic.test$Survived<-NA
+titanic.full<-rbind(titanic.train,titanic.test)
+
+```
+
+Mostramos su resumen para una evaluación rápida
+
+```{r}
+summary(titanic.full)
+```
+
+Después de haber descrito las columnas, y ver este breve resumen, indicamos la selección de datos que son de nuestro interés y los que no.
+
+* PassengerID: Es un identificador del viajero añadido al dataset. Lo mantendremos por que nos ayudará a comprobar los resultados, pero por supuesto no entra en el análisis.
+* Survived: Es la variable dependiente, que tendremos que predecir para el conjunto de test.
+* Name: No tiene valor para el análisis, pero de momento no lo quitamos. Lo mantenemos para el proceso de limpieza ya que indica el tratamiento personal del viajero, que nos será útil. Sí que lo quitaremos en el análisis.
+* Ticket: Es un código del billete, sin relación ni lógca que nos valga para el análisis ni para la limpieza, por lo que lo quitaremos.
+* Cabin: Es un campo muy incompleto, con pocos datos, por lo que decidimos no incluirlo en el análisis.
+El resto de campos sí los usaremos en nuestro análisis.
+
+Viendo los datos que queremos usar, vamos a comprobar primero el tipo de datos que R les ha asignado.
+
+```{r}
+sapply(titanic.full,function (x) class(x))
+```
+Entendemos que Survived y Pclass deberían considerarse como factor. Además la edad la vamos a convertir a entero ya que no tiene mucho sentido trabajar con decimales. De esa manera unificamos todos los valores menores de 1, y quitamos el indicativo de edad estimada.
+
+```{r}
+titanic.full$Survived<-as.factor(titanic.full$Survived)
+titanic.full$Pclass<-as.factor(titanic.full$Pclass)
+titanic.full$Age<-as.integer(titanic.full$Age)
+sapply(titanic.full,function (x) class(x))
+
+```
+
+******
+#**Limpieza de los datos**
+******
+
+##**¿Los datos contienen ceros o elementos vacíos? ¿Cómo gestionarías cada uno de estos casos?**
+
+Observando el resumen de los datos, vemos columnas que contienen ceros o valores nulos.
+
+
+### Edad
+
+Podemos ver como la edad tiene ceros y nulos. Los ceros son datos reales (en el dataset original había datos decimales para la edad menor de uno, que hemos transformado a entero. En el dataset original no había ningún cero) pero nos queda por resolver los nulos. Para ello vamos a meter la mediana de la edad en estos campos nulos. Y para afinar mas, vamos a agrupar los datos para calcular diferentes medias y asignarlas. En el campo nombre, se indica el tratamiento de cada persona (señor, señora, señorita, etc) que tienen cierta relación con la edad. Por eso vamos a extraer este tratamiento, agrupar por él y calcular la mediana para cada grupo.
+
+Extraemos pues el tratamiento de cada viajero
+
+```{r}
+titanic.full$tittle<-gsub('(.*, )|(\\..*)','',titanic.full$Name)
+table(titanic.full$tittle)
+```
+
+Para cada uno de estos grupos, calcularemos la mediana de la edad (sin tener en cuenta los nulos que sabemos que hay). Pero primero miramos cuales de los grupos tiene nulos.
+
+```{r}
+titanic.NoAge=titanic.full[is.na(titanic.full$Age),]
+table(titanic.NoAge$tittle)
+```
+
+
+Calculamos pues la media de estos tipos de pasajeros. 
+
+```{r}
+titanic.Dr<-titanic.full[titanic.full$tittle=='Dr',]
+titanic.Dr.median<-median(titanic.Dr$Age,na.rm=TRUE)
+
+titanic.Master<-titanic.full[titanic.full$tittle=='Master',]
+titanic.Master.median<-median(titanic.Master$Age,na.rm=TRUE)
+
+titanic.Miss<-titanic.full[titanic.full$tittle=='Miss',]
+titanic.Miss.median<-median(titanic.Miss$Age,na.rm=TRUE)
+
+titanic.Mr<-titanic.full[titanic.full$tittle=='Mr',]
+titanic.Mr.median<-median(titanic.Mr$Age,na.rm=TRUE)
+
+titanic.Mrs<-titanic.full[titanic.full$tittle=='Mrs',]
+titanic.Mrs.median<-median(titanic.Mrs$Age,na.rm=TRUE)
+
+titanic.Ms<-titanic.full[titanic.full$tittle=='Ms',]
+titanic.Ms.median<-median(titanic.Ms$Age,na.rm=TRUE)
+```
+
+Y asignamos estos cálculos a los nulos.
+
+```{r}
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Dr',"Age"]<-titanic.Dr.median
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Master',"Age"]<-titanic.Master.median
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Miss',"Age"]<-titanic.Miss.median
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Mr',"Age"]<-titanic.Mr.median
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Mrs',"Age"]<-titanic.Mrs.median
+titanic.full[is.na(titanic.full$Age)&titanic.full$tittle=='Ms',"Age"]<-titanic.Ms.median
+```
+
+Con lo que tenmos este campo corregido. Si vemos su resumen, vemos sus nuevas estadísticas y que ya no tenemos nulos.
+
+```{r}
+summary(titanic.full$Age)
+```
+
+### Tarifa
+
+Como hemos visto, la tarifa (Fare) también tiene nulos
+
+```{r}
+titanic.full[is.na(titanic.full$Fare),]
+```
+
+Y también tiene ceros, 18 en concreto
+
+```{r}
+titanic.full[titanic.full$Fare==0.0,]
+```
+
+Para resolver el nulo, vamos a asignarle la mediana de un grupo similar a ese individuo.
+
+```{r}
+titanic.fare.median<-median(titanic.full[titanic.full$Pclass==3&titanic.full$Sex=='male'&titanic.full$Embarked=='S',]$Fare,na.rm=TRUE)
+titanic.full[is.na(titanic.full$Fare),"Fare"]<-titanic.fare.median
+summary(titanic.full$Fare)
+```
+
+Para los ceros, vamos calcular las medianas de los 18 individuos, clasificados en varios grupos. Son todos mujeres embarcadas en Southampton, de primera, segunda y tercera clase
+
+```{r}
+titanic.fareP1.median<-median(titanic.full[titanic.full$Pclass==1&titanic.full$Sex=='male'&titanic.full$Embarked=='S',]$Fare,na.rm=TRUE)
+titanic.fareP2.median<-median(titanic.full[titanic.full$Pclass==2&titanic.full$Sex=='male'&titanic.full$Embarked=='S',]$Fare,na.rm=TRUE)
+titanic.fareP3.median<-median(titanic.full[titanic.full$Pclass==3&titanic.full$Sex=='male'&titanic.full$Embarked=='S',]$Fare,na.rm=TRUE)
+
+titanic.full[titanic.full$Fare==0&titanic.full$Pclass==1,"Fare"]<-titanic.fareP1.median
+titanic.full[titanic.full$Fare==0&titanic.full$Pclass==2,"Fare"]<-titanic.fareP2.median
+titanic.full[titanic.full$Fare==0&titanic.full$Pclass==3,"Fare"]<-titanic.fareP3.median
+summary(titanic.full$Fare)
+```
+
+###Embarque
+
+Tiene dos valores nulos (asignados a una cadena vacía)
+
+```{r}
+table(titanic.full$Embarked)
+```
+
+Son sólo dos, por lo que simplemente les vamos a asignar el valor mayoritorio, S. Antes vamos a ver si separando en grupos se sigue cumpliendo que S es la mayoritaria.
+
+```{r}
+table(titanic.full$Embarked,titanic.full$Pclass)
+```
+```{r}
+table(titanic.full$Embarked,titanic.full$SibSp)
+```
+Asignamos pues Southampton a estas dos variables. Siendo sólo dos no vamos a crear grandes distorsiones.
+
+```{r}
+titanic.full[titanic.full$Embarked=="","Embarked"]<-"S"
+```
+
+### Cabina
+
+Hemos visto que esta columna tiene muchos campos nulos.
+
+```{r}
+sum(is.na(titanic.full$Cabin))
+sum(titanic.full$Cabin=="")
+```
+1014 de 1309 observaciones son nulas, por lo que no pueden tener validez en el estudio y la vamos a descartar.
+
+##Identificación y tratamiento de valores extremos
+
+Volvemos a mostrar el resumen del dataset
+
+```{r}
+summary(titanic.full)
+```
+
+* **Pasanger id:** Es un identificador, que podremos usar para indexar, pero no forma parte del análisis
+* **Survived:** Es la variable dependiente, que toma 0 o 1 (o nulo para los del test) 
+* **Name** Son textos con los nombres, por lo que no tiene sentido analizar valores extremos
+* **Sex:** Es un factor con dos valores, male, female
+* **Age:** Esta variable si que entra en el análisis, y es de tipo entero
+
+```{r}
+boxplot(titanic.full$Age)
+```
+
+```{r}
+boxplot.stats(titanic.full$Age)$out
+```
+Detecta varios valores como outliers, pero son valores válidos en la representación de la edad (valores entre cero y 82)
+
+* **Sibsp:** Podemos ver si tiene extremos, pero ya vemos que va de cero a ocho, que son valores lógicos, Son datos correctos
+
+```{r}
+boxplot(titanic.full$SibSp)
+```
+
+* **Parch:** Al igual que el caso anterior, está en valores lógicos por lo que si se detectan outliers, pero los consideramos como válidos
+
+```{r}
+boxplot(titanic.full$Parch)
+```
+
+* **Ticket:** Es un campo que no vamos a usar
+* **Fare:** Tiene unos valores muy extremos, pero entendemos que son tarifas especiales y válidas.
+
+```{r} 
+boxplot(titanic.full$Fare)
+```
+
+* **Cabin:** Son textos, en su mayor parte vacíos. No los vamos a usar
+* **Embarked:** Es un factor con tres elementos distintos.
+
+******
+#Análisis de los datos
+******
+
+##Selección  de  los  grupos  de  datos  que  se  quieren  analizar/comparar (planificación de los análisis a aplicar).
+
+Como indicamos al principio, no vamos a usar todas las columnas. Quitamos el nombre, el código de billete y el número de camarote.
+Además, anteriormente fusionamos los datos de test y entranamiento para realizar mejor la limpieza. Ahora, después de limpiar los datos y elminar las columnas innecsarias, los volvemos a segregar.
+
+
+```{r}
+titanic.transfomed<-titanic.full[,-c(4,9,11)]
+titanic.transfomed$tittle<-as.factor(titanic.transfomed$tittle)
+titanic.transformed.test<-titanic.transfomed[is.na(titanic.transfomed$Survived),]
+titanic.transformed.train<-titanic.transfomed[!(is.na(titanic.transfomed$Survived)),]
+```
+Vamos a hacer una operación mas. Uno de los objetivos es ver la relación entre las variables y la supervivencia. Por eso vamos a dejar preparado otro conjunto de datos, sin el identificador de viajero y con las columnas de tipo numérico, para poder hacer la correlación.
+```{r}
+titanic.corr<-titanic.transformed.train[,-c(1)]
+titanic.corr$Survived<-as.numeric(titanic.corr$Survived)
+titanic.corr$Pclass<-as.numeric(titanic.corr$Pclass)
+titanic.corr$Sex<-as.numeric(titanic.corr$Sex)
+titanic.corr$SibSp<-as.numeric(titanic.corr$SibSp)
+titanic.corr$Parch<-as.numeric(titanic.corr$Parch)
+titanic.corr$Embarked<-as.numeric(titanic.corr$Embarked)
+titanic.corr$tittle<-as.numeric(titanic.corr$tittle)
+
+```
+
+##Comprobación de la normalidad y homogeneidad de la varianza.
+
+Vamos a hacer el test de normalidad para las variables cuantitativas.
+```{r}
+shapiro.test(titanic.full$Age)
+```
+El test nos indica que los datos de edad no están normalizados ya que su p-valor es inferior a 0.05. Indicar que al tener mas de 30 registros si que podemos aproximarla a una distribución normal. Este es su histograma:
+
+```{r}
+hist(titanic.full$Age)
+```
+
+Para las variables de unidad familiar, obtenemos la misma conclusión.
+
+```{r}
+shapiro.test(titanic.full$SibSp)
+hist(titanic.full$SibSp)
+```
+
+```{r}
+shapiro.test(titanic.full$Parch)
+hist(titanic.full$Parch)
+```
+
+## **Aplicación  de  pruebas  estadísticas  para  comparar  los  grupos  de  datos.  En función de los datos y el objetivo del estudio, aplicar pruebas de contraste de hipótesis, correlaciones, regresiones, etc **
+
+### Correlación
+
+Vamos a estudiar la correlación de las variables, para ver cual puede afectar mas a la supervivencia, además de detectar altas correlaciones entre las variables.
+
+```{r}
+library(corrplot)
+titanic.correlacion<-cor(titanic.corr)
+corrplot(titanic.correlacion,method="circle")
+```
+```{r}
+titanic.correlacion
+```
+
+La clase de billete afecta  mucho a la supervivencia, pero podemos ver como la que mas afecta es el género. Las que menos afectan son la edad y las condiciones familiares.
+Se aprecia además una fuerte relación (logicamente) entre la clase de tarifa y su precio.
+
+### Regresión
+
+Además de la correlación, vamos a crear un modelo de regresión logística que nos indique la importancia de las variables en la dependiente Survived
+
+```{r}
+titanic.regresion<-glm(Survived~Pclass+Sex+Age+SibSp+Parch+Fare+Embarked,data=titanic.transformed.train, family="binomial")
+summary(titanic.regresion)
+```
+
+Volvemos a ver como la clase (concretamente la tercera clase) y el sexo masculino son variables muy significativas para la supervivencia y vemos como lo son también la edad del pasajero y el número de hermanos o cónyuges.
+
+### Predicción
+
+
+Vamos a aplicar un algoritmo **Random Forest** para generar una predicción de la supervivencia de los viajeros del grupo test. Vamos a incluir en la fórmula la clase, el sexo, el embarque y la tarifa
+
+```{r}
+library('randomForest')
+
+set.seed(123)
+titanic.random.forest <- randomForest(factor(Survived) ~ Pclass + Sex  + Fare + Embarked +tittle, data = titanic.transformed.train)
+```
+
+
+```{r}
+# prediction
+titanic.random.predct = predict(titanic.random.forest)
+titanic.random.fitted = rep(NA,891)
+for(i in 1:891){
+  titanic.random.fitted[i] = as.integer(titanic.random.predct[[i]]) - 1
+}
+# Résultat
+table(titanic.random.fitted)
+
+print(titanic.random.forest)
+```
+
+```{r}
+titanic.prediction <- predict(titanic.random.forest, titanic.transformed.test)
+
+# Solution 2 columns (prediction)
+titanic.solution <- data.frame(Survived = titanic.prediction, PassengerID = titanic.transformed.test$PassengerId)
+```
+
+```{r}
+titanic.test.result<-titanic.test
+titanic.test.result$Survived<-titanic.solution$Survived
+```
+
+
+******
+#**Representación de los resultados a partir de tablas y gráficas**
+******
+Vamos a comparar el resultado de nuestro test con el resultado real.
+
+```{r}
+titanic.gender_submission=read.csv("dataset\\gender_submission.csv")
+titanic.test<-titanic.test.result[,c(1,12)]
+table(titanic.gender_submission$Survived,titanic.test$Survived)
+```
+Hemos tenido 30 + 18 predicciones incorrectas, de 418 registros (un 11.5%), por lo que vemos que el modelo es bastante efectivo.
+
+Para terminar de evaluar el modelo, vamos a representar en varios gráficos las tasas de supervivencia respecto a diversos factores, representando primero del resultado de nuestra evaluación y a su derecha de los de entranamiento, para así pode comparar visualmente las tasas de supervivencia reales con las que acabamos de calcular.
+
+* Supervivencia respecto al género.
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+g1<-ggplot(data=titanic.test.result, aes(x=Sex, fill=Survived))+geom_bar()
+g2<-ggplot(data=titanic.transformed.train, aes(x=Sex, fill=Survived))+geom_bar()
+grid.arrange(g1,g2,ncol=2)
+```
+
+* Supervivencia respecto a clase de tarifa.
+
+```{r}
+g1<-ggplot(data=titanic.test.result, aes(x=Pclass, fill=Survived))+geom_bar()
+g2<-ggplot(data=titanic.transformed.train, aes(x=Pclass, fill=Survived))+geom_bar()
+grid.arrange(g1,g2,ncol=2)
+```
+
+* Supervivencia respecto al origen de embarque.
+
+```{r}
+g1<-ggplot(data=titanic.test.result, aes(x=Embarked, fill=Survived))+geom_bar()
+g2<-ggplot(data=titanic.transformed.train, aes(x=Embarked, fill=Survived))+geom_bar()
+grid.arrange(g1,g2,ncol=2)
+```
+
+* Supervivencia respecto al número de conyuges y hermanos.
+
+```{r}
+g1<-ggplot(data=titanic.test.result, aes(x=SibSp, fill=Survived))+geom_bar()
+g2<-ggplot(data=titanic.transformed.train, aes(x=SibSp, fill=Survived))+geom_bar()
+grid.arrange(g1,g2,ncol=2)
+```
+
+* Supervivencia respecto al número de ascendientes y descendientes.
+
+```{r}
+g1<-ggplot(data=titanic.test.result, aes(x=Parch, fill=Survived))+geom_bar()
+g2<-ggplot(data=titanic.transformed.train, aes(x=Parch, fill=Survived))+geom_bar()
+grid.arrange(g1,g2,ncol=2)
+```
+
+
+
+******
+#**Resolución  del  problema.  A  partir  de  los  resultados  obtenidos,  ¿cuáles  son las conclusiones? ¿Los resultados permiten responder al problema?**
+******
+
+Viendo los datos, vemos que el mito de que salvaron mas pasajeros de tarifas altas es cierto, pero se saca a la luz un nuevo dato, que es que el género es la mayor condición para sobrevivir al Titanic. Aunque nos planteamos una pregunta, ¿no será que la tercera clase está compuesta mayoritariamente por hombres, o por lo menos en mayor medida que en el resto de las clases?
+
+```{r}
+table(titanic.full$Sex, titanic.full$Pclass)
+```
+
+El otro objetivo era ver si podíamos construir un modelo con estos datos. Como vimos tuvimos 48 fallos sobre 418 predicciones, lo que significa que hemos acertado con el 88,5 de los individuos del test.
